@@ -38,6 +38,13 @@
     </dependencies>
 
     <build>
+        <sourceDirectory>src/BACKEND/main/java</sourceDirectory>
+        <testSourceDirectory>src/BACKEND/test/java</testSourceDirectory>
+        <resources>
+            <resource>
+                <directory>src/BACKEND/main/resources</directory>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

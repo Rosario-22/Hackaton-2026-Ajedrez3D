@@ -193,12 +193,11 @@ public class GameService {
             case BISHOP -> slideMoves(game, piece, new int[][]{
                     {1, 1, 0}, {1, -1, 0}, {-1, 1, 0}, {-1, -1, 0},
                     {1, 0, 1}, {1, 0, -1}, {-1, 0, 1}, {-1, 0, -1},
-                    {0, 1, 1}, {0, 1, -1}, {0, -1, 1}, {0, -1, -1}
-            });
-            case UNICORN -> slideMoves(game, piece, new int[][]{
+                    {0, 1, 1}, {0, 1, -1}, {0, -1, 1}, {0, -1, -1},
                     {1, 1, 1}, {1, 1, -1}, {1, -1, 1}, {1, -1, -1},
                     {-1, 1, 1}, {-1, 1, -1}, {-1, -1, 1}, {-1, -1, -1}
             });
+            case UNICORN -> unicornMoves(game, piece);
             case KNIGHT -> knightMoves(game, piece);
         };
     }
@@ -262,6 +261,26 @@ public class GameService {
                 {1, 0, 2}, {1, 0, -2}, {-1, 0, 2}, {-1, 0, -2},
                 {0, 2, 1}, {0, 2, -1}, {0, -2, 1}, {0, -2, -1},
                 {0, 1, 2}, {0, 1, -2}, {0, -1, 2}, {0, -1, -2}
+        };
+        for (int[] offset : offsets) {
+            Position to = new Position(from.x() + offset[0], from.y() + offset[1], from.z() + offset[2]);
+            if (!to.isInsideBoard()) {
+                continue;
+            }
+            Piece occupant = game.getPieces().get(to);
+            if (occupant == null || occupant.getColor() != piece.getColor()) {
+                moves.add(to);
+            }
+        }
+        return moves;
+    }
+
+    private Set<Position> unicornMoves(Game game, Piece piece) {
+        Set<Position> moves = new LinkedHashSet<>();
+        Position from = piece.getPosition();
+        int[][] offsets = {
+                {1, 1, 1}, {1, 1, -1}, {1, -1, 1}, {1, -1, -1},
+                {-1, 1, 1}, {-1, 1, -1}, {-1, -1, 1}, {-1, -1, -1}
         };
         for (int[] offset : offsets) {
             Position to = new Position(from.x() + offset[0], from.y() + offset[1], from.z() + offset[2]);

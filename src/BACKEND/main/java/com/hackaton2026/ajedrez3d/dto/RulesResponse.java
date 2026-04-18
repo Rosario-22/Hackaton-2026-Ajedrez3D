@@ -27,13 +27,13 @@ public record RulesResponse(
                 ),
                 new PieceRuleDto(
                         PieceType.BISHOP,
-                        "Control diagonal de planos.",
-                        List.of("Cualquier cantidad de casillas", "exactamente dos ejes a la vez")
+                        "Control diagonal de planos y 3D.",
+                        List.of("Cualquier cantidad de casillas", "dos o tres ejes a la vez")
                 ),
                 new PieceRuleDto(
                         PieceType.UNICORN,
-                        "Control diagonal 3D.",
-                        List.of("Cualquier cantidad de casillas", "tres ejes a la vez en la misma proporcion")
+                        "Salto diagonal 3D.",
+                        List.of("1 casilla", "tres ejes a la vez")
                 ),
                 new PieceRuleDto(
                         PieceType.KNIGHT,
