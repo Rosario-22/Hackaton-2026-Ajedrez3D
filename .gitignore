@@ -1,0 +1,5 @@
+target/
+.m2/
+.mvn/
+*.log
+.DS_Store
