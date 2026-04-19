@@ -2,14 +2,20 @@ package com.hackaton2026.ajedrez3d.model;
 
 public class Piece {
 
+    private final String id;
     private final PieceType type;
     private final PieceColor color;
     private Position position;
 
-    public Piece(PieceType type, PieceColor color, Position position) {
+    public Piece(String id, PieceType type, PieceColor color, Position position) {
+        this.id = id;
         this.type = type;
         this.color = color;
         this.position = position;
+    }
+
+    public String getId() {
+        return id;
     }
 
     public PieceType getType() {

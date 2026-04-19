@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -30,6 +31,11 @@ public class GameService {
     public static final int BOARD_SIZE = 5;
 
     private final Map<UUID, Game> games = new ConcurrentHashMap<>();
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public GameService(SimpMessagingTemplate messagingTemplate) {
+        this.messagingTemplate = messagingTemplate;
+    }
 
     public GameStateResponse createGame() {
         Game game = new Game(UUID.randomUUID());
@@ -82,7 +88,7 @@ public class GameService {
 
         game.touch();
 
-        return new MoveResponse(
+        MoveResponse response = new MoveResponse(
                 true,
                 "Move applied",
                 game.getId(),
@@ -97,6 +103,11 @@ public class GameService {
                 capturedPiece == null ? null : toDto(capturedPiece),
                 game.getLastMove()
         );
+
+        // Send WebSocket update
+        messagingTemplate.convertAndSend("/topic/game/" + id, toStateResponse(game));
+
+        return response;
     }
 
     private Game getGame(UUID id) {
@@ -119,17 +130,17 @@ public class GameService {
     }
 
     private void seedPieces(Game game) {
-        place(game, new Piece(PieceType.KING, PieceColor.WHITE, new Position(0, 0, 0)));
-        place(game, new Piece(PieceType.ROOK, PieceColor.WHITE, new Position(1, 0, 0)));
-        place(game, new Piece(PieceType.BISHOP, PieceColor.WHITE, new Position(0, 1, 0)));
-        place(game, new Piece(PieceType.UNICORN, PieceColor.WHITE, new Position(1, 1, 1)));
-        place(game, new Piece(PieceType.KNIGHT, PieceColor.WHITE, new Position(2, 0, 1)));
+        place(game, new Piece("1", PieceType.KING, PieceColor.WHITE, new Position(0, 0, 0)));
+        place(game, new Piece("2", PieceType.ROOK, PieceColor.WHITE, new Position(1, 0, 0)));
+        place(game, new Piece("3", PieceType.UNICORN, PieceColor.WHITE, new Position(0, 0, 1)));
+        place(game, new Piece("4", PieceType.KNIGHT, PieceColor.WHITE, new Position(1, 0, 1)));
+        place(game, new Piece("5", PieceType.BISHOP, PieceColor.WHITE, new Position(0, 1, 0)));
 
-        place(game, new Piece(PieceType.KING, PieceColor.BLACK, new Position(4, 4, 4)));
-        place(game, new Piece(PieceType.ROOK, PieceColor.BLACK, new Position(3, 4, 4)));
-        place(game, new Piece(PieceType.BISHOP, PieceColor.BLACK, new Position(4, 3, 4)));
-        place(game, new Piece(PieceType.UNICORN, PieceColor.BLACK, new Position(3, 3, 3)));
-        place(game, new Piece(PieceType.KNIGHT, PieceColor.BLACK, new Position(2, 4, 3)));
+        place(game, new Piece("6", PieceType.KING, PieceColor.BLACK, new Position(4, 4, 4)));
+        place(game, new Piece("7", PieceType.ROOK, PieceColor.BLACK, new Position(3, 4, 4)));
+        place(game, new Piece("8", PieceType.UNICORN, PieceColor.BLACK, new Position(4, 4, 3)));
+        place(game, new Piece("9", PieceType.KNIGHT, PieceColor.BLACK, new Position(3, 4, 3)));
+        place(game, new Piece("10", PieceType.BISHOP, PieceColor.BLACK, new Position(4, 3, 4)));
     }
 
     private void place(Game game, Piece piece) {
@@ -142,12 +153,6 @@ public class GameService {
     private GameStateResponse toStateResponse(Game game) {
         List<PieceDto> pieces = game.getPieces().values().stream()
                 .map(this::toDto)
-                .sorted(Comparator
-                        .comparing(PieceDto::color)
-                        .thenComparing(PieceDto::type)
-                        .thenComparing(dto -> dto.position().x())
-                        .thenComparing(dto -> dto.position().y())
-                        .thenComparing(dto -> dto.position().z()))
                 .toList();
 
         return new GameStateResponse(
@@ -169,7 +174,22 @@ public class GameService {
     }
 
     private PieceDto toDto(Piece piece) {
-        return new PieceDto(piece.getType(), piece.getColor(), piece.getPosition());
+        return new PieceDto(
+                piece.getId(),
+                toPieceTypeName(piece.getType()),
+                piece.getColor().name().toLowerCase(),
+                piece.getPosition()
+        );
+    }
+
+    private String toPieceTypeName(PieceType type) {
+        return switch (type) {
+            case KING -> "rey";
+            case ROOK -> "torre";
+            case BISHOP -> "alfil";
+            case UNICORN -> "unicornio";
+            case KNIGHT -> "caballo";
+        };
     }
 
     private List<Position> legalMoves(Game game, Piece piece) {
@@ -315,7 +335,7 @@ public class GameService {
         clone.setWinner(source.getWinner());
         clone.setLastMove(source.getLastMove());
         for (Piece piece : source.getPieces().values()) {
-            clone.getPieces().put(piece.getPosition(), new Piece(piece.getType(), piece.getColor(), piece.getPosition()));
+            clone.getPieces().put(piece.getPosition(), new Piece(piece.getId(), piece.getType(), piece.getColor(), piece.getPosition()));
         }
         return clone;
     }

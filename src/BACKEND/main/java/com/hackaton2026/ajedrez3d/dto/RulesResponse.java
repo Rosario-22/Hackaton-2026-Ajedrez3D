@@ -38,7 +38,7 @@ public record RulesResponse(
                 new PieceRuleDto(
                         PieceType.KNIGHT,
                         "Pieza de salto tactico.",
-                        List.of("Movimiento en L 3D", "2 casillas en un eje y 1 en otro", "puede saltar piezas")
+                        List.of("Movimiento en L 2D y 3D", "2 casillas en un eje y 1 en otro", "puede saltar piezas")
                 )
         );
 
@@ -47,12 +47,12 @@ public record RulesResponse(
                 new InitialPlacementDto(PieceColor.WHITE, PieceType.ROOK, new Position(1, 0, 0)),
                 new InitialPlacementDto(PieceColor.WHITE, PieceType.BISHOP, new Position(0, 1, 0)),
                 new InitialPlacementDto(PieceColor.WHITE, PieceType.UNICORN, new Position(1, 1, 1)),
-                new InitialPlacementDto(PieceColor.WHITE, PieceType.KNIGHT, new Position(2, 0, 1))
+                new InitialPlacementDto(PieceColor.WHITE, PieceType.KNIGHT, new Position(1, 1, 0))
         );
 
         List<InitialPlacementDto> blackSetup = List.of(
-                new InitialPlacementDto(PieceColor.BLACK, PieceType.KING, new Position(boardSize - 1, boardSize - 1, boardSize - 1)),
-                new InitialPlacementDto(PieceColor.BLACK, PieceType.ROOK, new Position(boardSize - 2, boardSize - 1, boardSize - 1)),
+                new InitialPlacementDto(PieceColor.BLACK, PieceType.KING, new Position(boardSize - 4, boardSize - 4, boardSize - 4)),
+                new InitialPlacementDto(PieceColor.BLACK, PieceType.ROOK, new Position(boardSize - 3, boardSize - 4, boardSize - 4)),
                 new InitialPlacementDto(PieceColor.BLACK, PieceType.BISHOP, new Position(boardSize - 1, boardSize - 2, boardSize - 1)),
                 new InitialPlacementDto(PieceColor.BLACK, PieceType.UNICORN, new Position(boardSize - 2, boardSize - 2, boardSize - 2)),
                 new InitialPlacementDto(PieceColor.BLACK, PieceType.KNIGHT, new Position(boardSize - 3, boardSize - 1, boardSize - 2))
