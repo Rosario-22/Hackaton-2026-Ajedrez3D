@@ -1,8 +1,11 @@
 package com.hackaton2026.ajedrez3d.model;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 public class Game {
@@ -29,8 +32,24 @@ public class Game {
         return id;
     }
 
-    public Map<Position, Piece> getPieces() {
-        return pieces;
+    public Optional<Piece> pieceAt(Position position) {
+        return Optional.ofNullable(pieces.get(position));
+    }
+
+    public void placePiece(Piece piece) {
+        pieces.put(piece.getPosition(), piece);
+    }
+
+    public Optional<Piece> removePiece(Position position) {
+        return Optional.ofNullable(pieces.remove(position));
+    }
+
+    public Collection<Piece> allPieces() {
+        return Collections.unmodifiableCollection(pieces.values());
+    }
+
+    public boolean isOccupied(Position position) {
+        return pieces.containsKey(position);
     }
 
     public PieceColor getTurn() {

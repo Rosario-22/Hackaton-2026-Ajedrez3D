@@ -1,0 +1,127 @@
+Documentación y redacción del progreso del backend y problemas del día a día
+
+
+Hoy 19/04/2026 un día despúes del hacka:
+
+******************************************************************************************************************************************************************
+Malas Prácticas 4: 
+- TestController en producción: Endpoint de prueba que agregué ayer a producción 
+  para lograr pronta conexión al front. 
+   Tiene strings hardcodeados ("rey", "torre"), IDs manuales ("1", "2"), y emite un evento WebSocket a /topic/game/1 con datos ficticios. 
+   Cualquiera puede llamar a /test y ensuciar el estado del frontend en producción.
+   Además usa @Autowired por campo, que es la forma menos recomendada de inyección de dependencias 
+   en Spring (hace el código difícil de testear e impide declarar el campo como final).
+    // MAL: inyección por campo + endpoint de prueba en producción
+        @Autowired
+        private SimpMessagingTemplate messagingTemplate;
+
+        @GetMapping("/test")  // ← eliminar completamente
+        public String sendTest() { ... }
+MEJORAR: inyección por constructor + el endpoint no existe. 
+LISTO
+
+- CORS con credenciales habilitadas: Tengo addAllowedOriginPattern("*") combinado con setAllowCredentials(true). 
+    Esto es una combinación inválida según la especificación CORS y los navegadores la rechazan — 
+    podés hacer que el frontend no funcione. Si necesitás credenciales, tenés que especificar el origen exacto.
+
+        // MAL: * con credenciales → los navegadores rechazan esto
+        config.addAllowedOriginPattern("*");
+        config.setAllowCredentials(true);
+MEJORAR:origen específico si usás credenciales 
+
+- Estado del juego mutable y sin sincronización : Uso ConcurrentHashMap para el mapa de partidas, lo cual es correcto. 
+Pero el objeto Game dentro del mapa no tiene ninguna protección de concurrencia. 
+Si dos jugadores hacen un movimiento al mismo tiempo, ambos pasan la validación de turno y ejecutan el movimiento en paralelo, 
+corrompiendo el estado del tablero.
+Además, Game.getPieces() devuelve la referencia directa al mapa interno — 
+cualquiera puede modificarlo desde afuera sin pasar por la lógica de validación del servicio.
+
+// MAL: getPieces() expone el mapa interno directamente
+public Map<Position, Piece> getPieces() {
+    return pieces; // referencia mutable → cualquiera puede modificarla
+}
+MEJORAR: encapsular las operaciones en Game
+
+- Sin persistencia: Toda la memoria se pierde al reiniciar: 
+Las partidas solo viven en el ConcurrentHashMap del servicio. 
+Si el servidor se reinicia (deploy, crash, etc.) se pierden todas. 
+Tampoco hay limpieza de partidas viejas — si se crean muchas, la memoria crece indefinidamente.
+
+MEJORAR: Agregar una base de datos embebida como H2 con Spring Data JPA, 
+o al menos un mecanismo de expiración de partidas inactivas.
+
+**********************************************************************************************************************************************
+Cosas a Mejorar: 
+-GameService hace demasiado, viola Single Responsibility: concentra toda la lógica del sistema: 
+gestión de partidas, movimientos, cálculo de movimientos legales, detección de jaque/jaque mate/ahogado, 
+conversión a DTOs y envío de WebSockets. Son al menos 4 responsabilidades distintas en una sola clase de 
+~300 líneas.
+
+Lo ideal sería separar en al menos: MoveValidator (valida y calcula movimientos), 
+GameStateEvaluator (jaque, jaque mate, ahogado), 
+GameMapper (conversión a DTOs), dejando GameService solo con la orquestación.
+
+- Position usa el magic number 5 en vez de la constante: Definí BOARD_SIZE = 5 en GameService, 
+pero en Position.isInsideBoard() 
+y en las anotaciones @Max(4) hardcodeaste el 5 y el 4 directamente. 
+Si el tamaño del tablero cambia, hay que actualizarlo en varios 
+lugares distintos y es fácil olvidarse de uno.
+// MAL: magic numbers en Position
+public boolean isInsideBoard() {
+    return x >= 0 && x < 5 && ...  // ← hardcodeado
+}
+Solucion:definir una las constantes en un solo lugar.
+
+- Respuestas HTTP sin códigos semánticos en los endpoints: createGame() devuelve 200 OK cuando debería devolver 201 Created. 
+Los endpoints GET que no encuentran el recurso ya lanzan 404 correctamente desde el servicio, 
+pero la creación debería indicar explícitamente que se creó un recurso nuevo.
+// MAL: retorna 200 en creación
+@PostMapping
+public GameStateResponse createGame() { ... }
+
+Solucion:  retorna 201 Created
+
+- RulesController accede directamente a GameService.BOARD_SIZE: El controlador llama a RulesResponse.defaultRules(GameService.BOARD_SIZE) 
+accediendo directamente a una constante de otra capa. Un controlador no debería conocer detalles de implementación del servicio. 
+Lo correcto es que RulesController le pida las reglas al servicio, y el servicio las construya internamente.
+
+-Sin manejo de errores global ni logging: Tengo  spring.mvc.problemdetails.enabled=true que ayuda, pero no hay un @ControllerAdvice / @RestControllerAdvice 
+para centralizar el manejo de excepciones y dar respuestas de error consistentes. 
+Tampoco hay ningún Logger en el proyecto — en producción no tendrías forma de saber qué está pasando.
+
+******************************************************************************************************************************************************************
+
+Redundancias: 
+- isKingInCheck, isCheckmate e isStalemate se calculan se calculan multiples veces por movimiento: 
+Después de procesar un movimiento, move() llama a updateEndState(game), 
+que a su vez llama a isCheckmate() y isStalemate(). Luego, al construir el MoveResponse, 
+vuelve a llamar a isKingInCheck, isCheckmate e isStalemate por segunda vez. 
+Cada una de esas evaluaciones puede implicar clonar el juego y calcular movimientos legales de todas las piezas,
+ es caro para un tablero grande.
+
+La solución es calcular el estado una sola vez y guardarlo en variables locales antes de construir la respuesta.
+
+- isInsideBoard duplicado en Position y GameService:Position tiene isInsideBoard() y GameService tiene un método privado 
+isInsideBoard(int x, int y, int z) que hace exactamente lo mismo. La versión del servicio se usa en slideMoves() 
+para evitar crear objetos Position en cada paso del slide, lo cual tiene sentido como micro-optimización, 
+pero igual es código duplicado que puede divergir. 
+
+- MoveResponse y GameStateResponse comparten casi los mismos campos: Ambos records tienen gameId, turn, status, winner, whiteInCheck, blackInCheck, 
+checkmate, stalemate, finishReason, lastMove. La diferencia es que MoveResponse agrega valid, message y capturedPiece, y no tiene la lista de piezas. 
+Podrías tener un record base GameSnapshot con los campos comunes, o simplemente retornar el GameStateResponse completo desde el endpoint de movimiento 
+(que además ya se envía por WebSocket de todas formas).
+
+******************************************************************************************************************************************************************
+Correcciones realizadas:
+    Borrado TestController.java
+    Arreglado CORS
+    Código HTTP 201 en createGame()
+    BoardConstants y eliminados magic numbers
+    RulesController desacoplado de GameService
+    isInsideBoard duplicado eliminado
+    Cálculos repetidos de jaque/jaque mate eliminados
+
+Refactors:
+    Game encapsula su mapa de piezas correctamente
+    GameService ya no accede al estado interno de Game directamente
+    
