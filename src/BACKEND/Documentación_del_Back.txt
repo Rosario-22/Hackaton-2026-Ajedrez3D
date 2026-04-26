@@ -126,4 +126,3 @@ Refactors:
     GameService ya no accede al estado interno de Game directamente
     GameService separado en 4 clases con responsabilidades claras
 
-

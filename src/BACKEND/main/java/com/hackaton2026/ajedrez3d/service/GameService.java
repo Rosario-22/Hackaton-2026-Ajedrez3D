@@ -6,12 +6,17 @@ import com.hackaton2026.ajedrez3d.dto.MoveRequest;
 import com.hackaton2026.ajedrez3d.dto.MoveResponse;
 import com.hackaton2026.ajedrez3d.model.BoardConstants;
 import com.hackaton2026.ajedrez3d.model.Game;
+import com.hackaton2026.ajedrez3d.model.GameEntity;
 import com.hackaton2026.ajedrez3d.model.GameStatus;
 import com.hackaton2026.ajedrez3d.model.MoveSummary;
 import com.hackaton2026.ajedrez3d.model.Piece;
 import com.hackaton2026.ajedrez3d.model.PieceColor;
 import com.hackaton2026.ajedrez3d.model.PieceType;
 import com.hackaton2026.ajedrez3d.model.Position;
+import com.hackaton2026.ajedrez3d.model.User;
+import com.hackaton2026.ajedrez3d.repository.GameRepository;
+import com.hackaton2026.ajedrez3d.repository.UserRepository;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class GameService {
 
     public static final int BOARD_SIZE = BoardConstants.BOARD_SIZE;
+    private final GameRepository gameRepository;
+    private final UserRepository userRepository;
 
     private final Map<UUID, Game> games = new ConcurrentHashMap<>();
     private final SimpMessagingTemplate messagingTemplate;
@@ -34,19 +41,51 @@ public class GameService {
     private final GameMapper mapper;
 
     public GameService(SimpMessagingTemplate messagingTemplate,
-                       MoveCalculator moveCalculator,
-                       GameStateEvaluator evaluator,
-                       GameMapper mapper) {
+                    MoveCalculator moveCalculator,
+                    GameStateEvaluator evaluator,
+                    GameMapper mapper,
+                    GameRepository gameRepository,
+                    UserRepository userRepository) {
         this.messagingTemplate = messagingTemplate;
         this.moveCalculator = moveCalculator;
         this.evaluator = evaluator;
         this.mapper = mapper;
+        this.gameRepository = gameRepository;
+        this.userRepository = userRepository;
     }
 
-    public GameStateResponse createGame() {
+    public GameStateResponse createGame(UUID creatorId) {
+        User creator = userRepository.findById(creatorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
         Game game = new Game(UUID.randomUUID());
         seedPieces(game);
         games.put(game.getId(), game);
+
+        // Guardar en base de datos
+        GameEntity entity = new GameEntity();
+        entity.setId(game.getId());
+        entity.setWhitePlayer(creator);
+        gameRepository.save(entity);
+
+        return mapper.toStateResponse(game);
+    }
+        public GameStateResponse joinGame(UUID gameId, UUID joinerId) {
+            Game game = getGame(gameId);
+
+            GameEntity entity = gameRepository.findById(gameId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Game not found"));
+
+            if (entity.getBlackPlayer() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already has two players");
+            }
+
+            User joiner = userRepository.findById(joinerId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+            entity.setBlackPlayer(joiner);
+            gameRepository.save(entity);
+
         return mapper.toStateResponse(game);
     }
 

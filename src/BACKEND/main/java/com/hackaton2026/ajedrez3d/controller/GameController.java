@@ -4,34 +4,38 @@ import com.hackaton2026.ajedrez3d.dto.GameStateResponse;
 import com.hackaton2026.ajedrez3d.dto.LegalMovesResponse;
 import com.hackaton2026.ajedrez3d.dto.MoveRequest;
 import com.hackaton2026.ajedrez3d.dto.MoveResponse;
-import com.hackaton2026.ajedrez3d.model.Position;
+import com.hackaton2026.ajedrez3d.security.JwtUtils;
 import com.hackaton2026.ajedrez3d.service.GameService;
 import jakarta.validation.Valid;
-import java.util.UUID;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/games")
 public class GameController {
 
     private final GameService gameService;
+    private final JwtUtils jwtUtils;
 
-    public GameController(GameService gameService) {
+    public GameController(GameService gameService, JwtUtils jwtUtils) {
         this.gameService = gameService;
+        this.jwtUtils = jwtUtils;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public GameStateResponse createGame() {
-        return gameService.createGame();
+    public GameStateResponse createGame(@RequestHeader("Authorization") String authHeader) {
+        UUID creatorId = extractUserId(authHeader);
+        return gameService.createGame(creatorId);
+    }
+
+    @PostMapping("/{id}/join")
+    public GameStateResponse joinGame(@PathVariable UUID id,
+                                      @RequestHeader("Authorization") String authHeader) {
+        UUID joinerId = extractUserId(authHeader);
+        return gameService.joinGame(id, joinerId);
     }
 
     @GetMapping("/{id}")
@@ -44,11 +48,17 @@ public class GameController {
                                             @RequestParam int x,
                                             @RequestParam int y,
                                             @RequestParam int z) {
-        return gameService.getLegalMoves(id, new Position(x, y, z));
+        return gameService.getLegalMoves(id, new com.hackaton2026.ajedrez3d.model.Position(x, y, z));
     }
 
     @PostMapping("/{id}/moves")
-    public MoveResponse move(@PathVariable UUID id, @Valid @RequestBody MoveRequest request) {
+    public MoveResponse move(@PathVariable UUID id,
+                             @Valid @RequestBody MoveRequest request) {
         return gameService.move(id, request);
+    }
+
+    private UUID extractUserId(String authHeader) {
+        String token = authHeader.replace("Bearer ", "");
+        return jwtUtils.extractUserId(token);
     }
 }
