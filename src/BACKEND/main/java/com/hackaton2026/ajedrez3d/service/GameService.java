@@ -8,6 +8,7 @@ import com.hackaton2026.ajedrez3d.model.BoardConstants;
 import com.hackaton2026.ajedrez3d.model.Game;
 import com.hackaton2026.ajedrez3d.model.GameEntity;
 import com.hackaton2026.ajedrez3d.model.GameStatus;
+import com.hackaton2026.ajedrez3d.model.MoveEntity;
 import com.hackaton2026.ajedrez3d.model.MoveSummary;
 import com.hackaton2026.ajedrez3d.model.Piece;
 import com.hackaton2026.ajedrez3d.model.PieceColor;
@@ -15,6 +16,7 @@ import com.hackaton2026.ajedrez3d.model.PieceType;
 import com.hackaton2026.ajedrez3d.model.Position;
 import com.hackaton2026.ajedrez3d.model.User;
 import com.hackaton2026.ajedrez3d.repository.GameRepository;
+import com.hackaton2026.ajedrez3d.repository.MoveRepository;
 import com.hackaton2026.ajedrez3d.repository.UserRepository;
 
 import java.util.List;
@@ -29,7 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class GameService {
-
+    private final MoveRepository moveRepository;
     public static final int BOARD_SIZE = BoardConstants.BOARD_SIZE;
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
@@ -45,14 +47,16 @@ public class GameService {
                     GameStateEvaluator evaluator,
                     GameMapper mapper,
                     GameRepository gameRepository,
-                    UserRepository userRepository) {
+                    UserRepository userRepository,
+                    MoveRepository moveRepository) {
         this.messagingTemplate = messagingTemplate;
         this.moveCalculator = moveCalculator;
         this.evaluator = evaluator;
         this.mapper = mapper;
         this.gameRepository = gameRepository;
         this.userRepository = userRepository;
-    }
+        this.moveRepository = moveRepository;
+    }   
 
     public GameStateResponse createGame(UUID creatorId) {
         User creator = userRepository.findById(creatorId)
@@ -131,8 +135,39 @@ public class GameService {
         } else {
             evaluator.updateEndState(game);
         }
-
+        // Actualizar estado en la BD
+        gameRepository.findById(id).ifPresent(entity -> {
+            entity.setStatus(game.getStatus());
+            entity.setWinner(game.getWinner());
+            if (game.getStatus() != GameStatus.IN_PROGRESS) {
+                entity.setFinishedAt(java.time.LocalDateTime.now());
+            }
+            gameRepository.save(entity);
+        });
         game.touch();
+
+        // Guardar movimiento en la BD
+        gameRepository.findById(id).ifPresent(entity -> {
+            MoveEntity moveEntity = new MoveEntity();
+            moveEntity.setGame(entity);
+            moveEntity.setPieceType(movingPiece.getType());
+            moveEntity.setPieceColor(movingPiece.getColor());
+            moveEntity.setFromX(originalFrom.x());
+            moveEntity.setFromY(originalFrom.y());
+            moveEntity.setFromZ(originalFrom.z());
+            moveEntity.setToX(request.to().x());
+            moveEntity.setToY(request.to().y());
+            moveEntity.setToZ(request.to().z());
+
+            // Asignar el jugador según el color que movió
+            if (movingPiece.getColor() == PieceColor.WHITE && entity.getWhitePlayer() != null) {
+                moveEntity.setPlayer(entity.getWhitePlayer());
+            } else if (entity.getBlackPlayer() != null) {
+                moveEntity.setPlayer(entity.getBlackPlayer());
+            }
+
+            moveRepository.save(moveEntity);
+        });
 
         boolean whiteInCheck = evaluator.isKingInCheck(game, PieceColor.WHITE);
         boolean blackInCheck = evaluator.isKingInCheck(game, PieceColor.BLACK);
@@ -196,5 +231,19 @@ public class GameService {
             throw new IllegalStateException("Duplicate piece position at " + piece.getPosition());
         }
         game.placePiece(piece);
+    }
+    
+    @jakarta.annotation.PostConstruct
+    public void reloadActiveGames() {
+        List<com.hackaton2026.ajedrez3d.model.GameEntity> activeGames = 
+            gameRepository.findByStatus(GameStatus.IN_PROGRESS);
+        
+        for (com.hackaton2026.ajedrez3d.model.GameEntity entity : activeGames) {
+            Game game = new Game(entity.getId());
+            seedPieces(game);
+            games.put(game.getId(), game);
+        }
+        
+        System.out.println("[GameService] Partidas activas recargadas: " + activeGames.size());
     }
 }
