@@ -12,8 +12,12 @@ import java.util.UUID;
 public class JwtUtils {
 
     private static final long EXPIRATION_MS = 1000L * 60 * 60 * 24 * 7; // 7 días
-    private final SecretKey key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    @org.springframework.beans.factory.annotation.Value("${jwt.secret}")
+    private String secret;
 
+    private SecretKey getKey() {
+        return Keys.hmacShaKeyFor(secret.getBytes());
+    }
     public String generateToken(UUID userId, String username, String plan) {
         return Jwts.builder()
                 .subject(username)
@@ -21,7 +25,7 @@ public class JwtUtils {
                 .claim("plan", plan)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
-                .signWith(key)
+                .signWith(getKey())
                 .compact();
     }
 
@@ -48,7 +52,7 @@ public class JwtUtils {
 
     private Claims parseClaims(String token) {
         return Jwts.parser()
-                .verifyWith(key)
+                .verifyWith(getKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

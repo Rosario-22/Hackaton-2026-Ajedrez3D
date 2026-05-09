@@ -8,3 +8,4 @@ public record AvailableGameResponse(
     String whitePlayer,
     LocalDateTime createdAt
 ) {}
+

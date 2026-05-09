@@ -1,5 +1,6 @@
 package com.hackaton2026.ajedrez3d.service;
 
+import com.hackaton2026.ajedrez3d.dto.AvailableGameResponse;
 import com.hackaton2026.ajedrez3d.dto.GameStateResponse;
 import com.hackaton2026.ajedrez3d.dto.LegalMovesResponse;
 import com.hackaton2026.ajedrez3d.dto.MoveRequest;
@@ -28,6 +29,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class GameService {
@@ -35,7 +38,7 @@ public class GameService {
     public static final int BOARD_SIZE = BoardConstants.BOARD_SIZE;
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
-
+    private static final Logger log = LoggerFactory.getLogger(GameService.class);
     private final Map<UUID, Game> games = new ConcurrentHashMap<>();
     private final SimpMessagingTemplate messagingTemplate;
     private final MoveCalculator moveCalculator;
@@ -244,6 +247,16 @@ public class GameService {
             games.put(game.getId(), game);
         }
         
-        System.out.println("[GameService] Partidas activas recargadas: " + activeGames.size());
+        log.info("Partidas activas recargadas: {}", activeGames.size());
+    }
+
+    public List<AvailableGameResponse> getAvailableGames() {
+        return gameRepository.findAvailableGames(GameStatus.IN_PROGRESS).stream()
+                .map(g -> new AvailableGameResponse(
+                        g.getId(),
+                        g.getWhitePlayer() != null ? g.getWhitePlayer().getUsername() : "?",
+                        g.getCreatedAt()
+                ))
+                .toList();
     }
 }

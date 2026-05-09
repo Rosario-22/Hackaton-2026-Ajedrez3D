@@ -126,3 +126,300 @@ Refactors:
     GameService ya no accede al estado interno de Game directamente
     GameService separado en 4 clases con responsabilidades claras
 
+******************************************************************************************************************************************************************
+
+
+Semanas después de la hacka (26/04/2026 en adelante):
+
+******************************************************************************************************************************************************************
+Base de Datos - PostgreSQL:
+
+Se agregaron las siguientes dependencias al pom.xml:
+    - spring-boot-starter-data-jpa
+    - postgresql (driver runtime)
+    - spring-boot-starter-security
+    - jjwt-api, jjwt-impl, jjwt-jackson (versión 0.12.6)
+    - h2 (scope test)
+
+Se configuró application.properties con:
+    - spring.datasource.url=jdbc:postgresql://localhost:5432/ajedrez3d
+    - spring.datasource.username=postgres
+    - spring.jpa.hibernate.ddl-auto=update
+    - spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+Tablas creadas automáticamente por JPA (no se necesitó escribir SQL):
+
+    users:
+        - id (UUID, PK)
+        - username (único, max 50 chars)
+        - email (único, max 100 chars)
+        - password (encriptado con BCrypt)
+        - plan (FREE o PREMIUM)
+        - created_at
+
+    games:
+        - id (UUID, PK)
+        - white_player_id (FK → users)
+        - black_player_id (FK → users, puede ser null si la sala está esperando oponente)
+        - status (IN_PROGRESS, WHITE_WON, BLACK_WON, DRAW)
+        - winner (WHITE o BLACK, puede ser null)
+        - created_at
+        - finished_at (null mientras la partida está en curso)
+
+    moves:
+        - id (UUID, PK, autogenerado)
+        - game_id (FK → games)
+        - player_id (FK → users)
+        - piece_type (KING, ROOK, BISHOP, UNICORN, KNIGHT)
+        - piece_color (WHITE o BLACK)
+        - from_x, from_y, from_z (posición origen)
+        - to_x, to_y, to_z (posición destino)
+        - played_at (timestamp exacto del movimiento)
+
+Nuevas clases de modelo (entidades JPA):
+    - model/User.java
+    - model/UserPlan.java (enum: FREE, PREMIUM)
+    - model/GameEntity.java
+    - model/MoveEntity.java
+
+Nuevos repositorios (Spring Data JPA):
+    - repository/UserRepository.java
+        - findByUsername, findByEmail, existsByUsername, existsByEmail
+    - repository/GameRepository.java
+        - findByWhitePlayerOrBlackPlayerOrderByCreatedAtDesc
+        - findByStatus
+        - findAvailableGames (Query personalizada: partidas sin jugador negro y en progreso)
+    - repository/MoveRepository.java
+        - findByGameOrderByPlayedAtAsc
+
+******************************************************************************************************************************************************************
+Autenticación - Spring Security + JWT:
+
+Nuevas clases en paquete security/:
+    - JwtUtils.java
+        - Genera tokens JWT con username, userId y plan
+        - Expiración: 7 días
+        - Firma: HS256
+        - Métodos: generateToken, extractUsername, extractPlan, extractUserId, isValid
+    - JwtFilter.java
+        - Intercepta cada request HTTP
+        - Lee el header Authorization: Bearer <token>
+        - Valida el token y carga el usuario en el contexto de seguridad
+        - Asigna el rol según el plan (ROLE_FREE o ROLE_PREMIUM)
+    - SecurityConfig.java
+        - CSRF deshabilitado (API stateless)
+        - Sesiones deshabilitadas (SessionCreationPolicy.STATELESS)
+        - Rutas públicas: /api/auth/**, /ws/**
+        - Rutas solo PREMIUM: /api/users/*/stats, /api/users/*/games
+        - Resto de rutas: requieren token válido
+        - PasswordEncoder: BCryptPasswordEncoder
+
+Nuevo servicio:
+    - service/AuthService.java
+        - register(): valida unicidad de username y email, encripta contraseña, guarda usuario, devuelve token
+        - login(): verifica contraseña con BCrypt, devuelve token
+
+Nuevo controlador:
+    - controller/AuthController.java
+        - POST /api/auth/register → 201 Created + token
+        - POST /api/auth/login → 200 OK + token
+
+Nuevos DTOs:
+    - dto/RegisterRequest.java (username, email, password con validaciones)
+    - dto/LoginRequest.java (username, password)
+    - dto/AuthResponse.java (userId, username, plan, token)
+
+******************************************************************************************************************************************************************
+Integración del login con el juego:
+
+GameService ahora recibe UserRepository, GameRepository y MoveRepository por constructor.
+
+Cambios en createGame():
+    - Recibe UUID creatorId extraído del token JWT
+    - Busca el usuario en la BD
+    - Crea la partida en memoria (igual que antes)
+    - Guarda una GameEntity en la tabla games con el jugador blanco asignado
+
+Nuevo método joinGame():
+    - Recibe UUID gameId y UUID joinerId
+    - Verifica que la partida exista en memoria y en BD
+    - Verifica que no haya ya un jugador negro
+    - Asigna el jugador negro y guarda en BD
+    - Devuelve el estado actual del juego
+
+Cambios en move():
+    - Después de cada movimiento, actualiza el estado (status, winner, finishedAt) en GameEntity
+    - Guarda un MoveEntity con todos los datos del movimiento (pieza, posiciones, jugador, timestamp)
+
+Nuevo método reloadActiveGames() con @PostConstruct:
+    - Al arrancar el servidor, consulta la BD buscando partidas IN_PROGRESS
+    - Recarga cada partida en memoria con las piezas en posición inicial
+    - Imprime cuántas partidas fueron recargadas
+    - Soluciona el problema de pérdida de partidas al reiniciar el servidor
+
+GameController actualizado:
+    - createGame() lee el token del header Authorization y extrae el userId
+    - joinGame() lee el token del header Authorization y extrae el userId
+    - Nuevo endpoint: POST /api/games/{id}/join
+
+******************************************************************************************************************************************************************
+Estadísticas e Historial (solo PREMIUM):
+
+Nuevo servicio:
+    - service/UserStatsService.java
+        - getStats(): devuelve partidas jugadas, ganadas, perdidas y empates
+        - getGameHistory(): devuelve lista de partidas con jugadores, resultado y fechas
+
+Nuevo controlador:
+    - controller/UserController.java
+        - GET /api/users/{id}/stats → solo PREMIUM (403 si es FREE)
+        - GET /api/users/{id}/games → solo PREMIUM (403 si es FREE)
+
+Nuevos DTOs:
+    - dto/UserStatsResponse.java (userId, username, gamesPlayed, gamesWon, gamesLost, gamesDrawn)
+    - dto/GameHistoryResponse.java (gameId, whitePlayer, blackPlayer, status, winner, createdAt, finishedAt)
+    - dto/AvailableGameResponse.java (gameId, whitePlayer, createdAt)
+
+******************************************************************************************************************************************************************
+Endpoints disponibles actualmente:
+
+    Autenticación (públicos):
+        POST /api/auth/register     → Registro de usuario, devuelve token JWT
+        POST /api/auth/login        → Login, devuelve token JWT
+
+    Juego (requieren token):
+        POST /api/games             → Crear nueva partida (201 Created)
+        POST /api/games/{id}/join   → Unirse a una partida existente
+        GET  /api/games/{id}        → Estado actual del juego
+        GET  /api/games/{id}/legal-moves?x=&y=&z=  → Movimientos legales de una pieza
+        POST /api/games/{id}/moves  → Ejecutar un movimiento
+
+    Usuarios (requieren token):
+        GET /api/users/{id}/stats   → Estadísticas del jugador (solo PREMIUM)
+        GET /api/users/{id}/games   → Historial de partidas (solo PREMIUM)
+
+    Información (públicos):
+        GET /api/health             → Estado del servidor
+        GET /api/rules              → Reglas del juego
+
+    WebSocket (público):
+        /ws/chess (SockJS + STOMP)  → Conexión en tiempo real
+        /topic/game/{id}            → Canal de actualizaciones de la partida
+
+******************************************************************************************************************************************************************
+Pendiente:
+
+    - GET /api/games/available → endpoint para listar partidas sin segundo jugador
+      (método en GameService y DTO ya creados, falta agregar en GameController)
+
+    - Clave JWT fija en application.properties → actualmente se genera nueva en cada reinicio,
+      lo que invalida todos los tokens existentes
+
+    - @Query con 'IN_PROGRESS' como string en GameRepository → debería usar parámetro tipado
+      para evitar errores silenciosos
+
+    - Manejo de errores global con @RestControllerAdvice → pendiente desde el análisis inicial
+
+    - Logging con Logger → pendiente desde el análisis inicial
+******************************************************************************************************************************************************************
+9 de Mayo del 2026
+
+1. GET /api/games/available — endpoint para listar partidas sin segundo jugador
+
+El método getAvailableGames() fue agregado en GameService.java:
+    - Consulta la BD usando gameRepository.findAvailableGames(GameStatus.IN_PROGRESS)
+    - Devuelve una lista de AvailableGameResponse con gameId, whitePlayer y createdAt
+
+En GameController.java se agregó el endpoint:
+    GET /api/games/available → devuelve lista de partidas esperando oponente (requiere token)
+
+LISTO
+
+******************************************************************************************************************************************************************
+2. Clave JWT fija en application.properties
+
+Problema anterior: la clave JWT se generaba nueva en cada reinicio del servidor con
+Keys.secretKeyFor(SignatureAlgorithm.HS256), lo que invalidaba todos los tokens existentes.
+
+Solución:
+    - Se agregó en application.properties:
+        jwt.secret=chess3d-super-secret-key-hackaton-2026-must-be-at-least-256-bits!!
+
+    - En JwtUtils.java se reemplazó la clave en memoria por:
+        @Value("${jwt.secret}")
+        private String secret;
+
+        private SecretKey getKey() {
+            return Keys.hmacShaKeyFor(secret.getBytes());
+        }
+
+    - Todos los métodos que usaban key ahora usan getKey()
+
+IMPORTANTE: application.properties está en .gitignore — la clave nunca se sube al repositorio.
+
+LISTO
+
+******************************************************************************************************************************************************************
+3. @Query con string hardcodeado en GameRepository
+
+Problema anterior: la query usaba 'IN_PROGRESS' como string literal, lo que podía generar
+errores silenciosos si el enum cambiaba de nombre.
+
+Solución: se reemplazó por parámetro tipado:
+    // ANTES
+    @Query("SELECT g FROM GameEntity g WHERE g.blackPlayer IS NULL AND g.status = 'IN_PROGRESS'")
+    List<GameEntity> findAvailableGames();
+
+    // DESPUÉS
+    @Query("SELECT g FROM GameEntity g WHERE g.blackPlayer IS NULL AND g.status = :status")
+    List<GameEntity> findAvailableGames(@Param("status") GameStatus status);
+
+Y en GameService se llama con:
+    gameRepository.findAvailableGames(GameStatus.IN_PROGRESS)
+
+LISTO
+
+******************************************************************************************************************************************************************
+4. Manejo de errores global con @RestControllerAdvice
+
+Se creó el paquete exception/ con GlobalExceptionHandler.java.
+
+Por qué global no es malo en este caso:
+    - No tiene estado — no guarda datos, solo intercepta errores y los formatea.
+    - Centraliza el manejo de errores de todos los controladores en un solo lugar.
+    - Si se quiere cambiar el formato de respuesta o agregar logs, se toca un solo archivo.
+    - Es la práctica recomendada en Spring Boot.
+
+Excepciones manejadas:
+    - ResponseStatusException → log.warn + ProblemDetail con el código HTTP correspondiente
+    - IllegalStateException   → log.error + 500 Internal Server Error
+    - Exception (general)     → log.error + 500 Internal Server Error
+
+LISTO
+
+******************************************************************************************************************************************************************
+5. Logging con SLF4J
+
+Se reemplazó System.out.println por Logger de SLF4J en todos los servicios.
+
+Clases actualizadas:
+    - GameService.java
+        private static final Logger log = LoggerFactory.getLogger(GameService.class);
+        log.info("Partidas activas recargadas: {}", activeGames.size());
+
+    - AuthService.java
+        private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
+    - UserStatsService.java
+        private static final Logger log = LoggerFactory.getLogger(UserStatsService.class);
+
+Por qué SLF4J es mejor que System.out.println:
+    - Los logs tienen niveles: DEBUG, INFO, WARN, ERROR
+    - En producción se pueden filtrar para ver solo errores
+    - Se pueden redirigir a archivos, servicios externos, etc.
+    - System.out.println no tiene contexto ni timestamp — SLF4J sí
+
+LISTO
+
+******************************************************************************************************************************************************************
+Estado actual del backend: COMPLETO. 

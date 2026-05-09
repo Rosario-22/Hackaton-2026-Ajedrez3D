@@ -1,5 +1,6 @@
 package com.hackaton2026.ajedrez3d.controller;
 
+import com.hackaton2026.ajedrez3d.dto.AvailableGameResponse;
 import com.hackaton2026.ajedrez3d.dto.GameStateResponse;
 import com.hackaton2026.ajedrez3d.dto.LegalMovesResponse;
 import com.hackaton2026.ajedrez3d.dto.MoveRequest;
@@ -9,7 +10,7 @@ import com.hackaton2026.ajedrez3d.service.GameService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -60,5 +61,10 @@ public class GameController {
     private UUID extractUserId(String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         return jwtUtils.extractUserId(token);
+    }
+    
+    @GetMapping("/available")
+    public List<AvailableGameResponse> getAvailableGames() {
+        return gameService.getAvailableGames();
     }
 }
