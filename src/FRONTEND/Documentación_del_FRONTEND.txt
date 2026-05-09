@@ -1,0 +1,136 @@
+Documentación y redacción del progreso del frontend y problemas del día a día
+
+
+Estado inicial hoy 9-5-2026 (heredado de la hackathon):
+
+******************************************************************************************************************************************************************
+Tecnologías usadas:
+
+    - React 18 — librería de JavaScript para construir interfaces de usuario
+    - Vite — herramienta que arranca y compila el proyecto React rápido
+    - Three.js — librería para gráficos 3D en el navegador
+    - @react-three/fiber — puente entre React y Three.js
+    - @react-three/drei — herramientas extra para Three.js (controles de cámara, texto 3D, etc.)
+    - @stomp/stompjs + sockjs-client — comunicación en tiempo real con el backend via WebSocket
+
+******************************************************************************************************************************************************************
+Estructura de archivos:
+
+    FRONTEND/
+    ├── App.jsx         — componente principal, maneja el estado del juego y las llamadas al backend
+    ├── socket.js       — conexión WebSocket con el backend
+    ├── logic.js        — lógica de movimientos (redundante, el backend ya calcula esto)
+    ├── main.jsx        — punto de entrada de la app React
+    ├── index.css       — estilos globales
+    ├── App.css         — estilos del componente principal
+    ├── vite.config.js  — configuración de Vite
+    └── package.json    — dependencias del proyecto
+
+    PROBLEMA: hay dos copias de todos los archivos — una en /FRONTEND/ y otra en /FRONTEND/src/.
+    Hay que limpiar la duplicación y dejar solo /FRONTEND/src/.
+
+******************************************************************************************************************************************************************
+Lo que funciona actualmente:
+
+    - Tablero 3D en el navegador: cubo 5x5x5 renderizado con Three.js
+    - Selección de piezas: al clickear una pieza se consulta al backend los movimientos legales
+    - Movimientos legales: las casillas válidas se resaltan en verde
+    - Ejecutar movimientos: al clickear una casilla verde se manda el movimiento al backend
+    - WebSocket: el tablero se actualiza en tiempo real cuando el backend notifica cambios
+    - Geometrías distintas por tipo de pieza:
+        Rey → esfera
+        Torre → cilindro
+        Alfil → cono
+        Unicornio → octaedro
+        Caballo → torusKnot
+
+******************************************************************************************************************************************************************
+Problemas detectados:
+
+- URL hardcodeada a ngrok (CRÍTICO):
+    En App.jsx:
+        const API = "https://urethane-onstage-ruckus.ngrok-free.dev";
+    En socket.js:
+        const WS_URL = "https://urethane-onstage-ruckus.ngrok-free.dev/xs/chess";
+
+    Esto era la URL temporal usada en la hackathon. Hay que cambiarlo a localhost:8081
+    para desarrollo local, y a la URL real del servidor cuando se publique.
+
+- GAME_ID hardcodeado (CRÍTICO):
+    En socket.js:
+        const GAME_ID = "1";
+    El WebSocket siempre escucha el canal /topic/game/1 sin importar qué partida
+    está jugando el usuario. Hay que usar el gameId real que devuelve el backend
+    al crear o unirse a una partida.
+
+- Sin sistema de login (CRÍTICO):
+    El frontend crea una partida directamente al cargar la página sin ningún token JWT.
+    Con el backend actualizado esto falla porque todos los endpoints requieren autenticación.
+    Hay que agregar pantallas de registro y login antes de poder jugar.
+
+- logic.js es redundante:
+    El archivo tiene una función isLegalMove() que calcula movimientos válidos en el frontend.
+    Esto ya lo hace el backend — no tiene sentido calcularlo dos veces.
+    Además tiene un typo: dice "inicornio" en lugar de "unicornio".
+    Se puede eliminar o ignorar.
+
+- Sin pantallas de navegación:
+    La app arranca directo en el tablero sin ningún menú.
+    Falta: pantalla de login, registro, menú principal, sala de espera, fin de partida.
+
+- Sin indicadores de estado del juego:
+    No hay texto que muestre de quién es el turno, si hay jaque, quién ganó, etc.
+    El backend devuelve toda esta información pero el frontend no la muestra.
+
+******************************************************************************************************************************************************************
+Archivos principales explicados:
+
+App.jsx:
+    Es el componente principal — el "cerebro" del frontend.
+    Maneja el estado del juego (piezas, partida activa, pieza seleccionada, movimientos legales).
+    Tiene tres componentes internos:
+        - App (principal): hace las llamadas al backend y coordina todo
+        - BoardGrid: dibuja el tablero 3D con sus 125 casillas (5x5x5)
+        - Piece: dibuja cada pieza con su geometría y color correspondiente
+
+socket.js:
+    Maneja la conexión WebSocket con el backend.
+    Cuando el backend notifica un cambio (movimiento del oponente), este archivo
+    lo recibe y llama a una función para actualizar el tablero.
+    Actualmente tiene el GAME_ID y la URL hardcodeados — problema crítico.
+
+logic.js:
+    Tiene lógica de validación de movimientos duplicada del backend.
+    No se usa actualmente en App.jsx — puede eliminarse.
+
+main.jsx:
+    Punto de entrada de React. Solo monta el componente App en el HTML.
+    No hay que tocar este archivo.
+
+vite.config.js:
+    Configuración del servidor de desarrollo.
+    Tiene `global: 'globalThis'` necesario para que sockjs-client funcione en el navegador.
+
+******************************************************************************************************************************************************************
+Pendiente (a resolver en orden):
+
+    1. Agregar pantalla de login y registro
+    2. Cambiar URL hardcodeada a localhost:8081
+    3. Pasar el token JWT en todas las requests al backend
+    4. Usar el gameId real en el WebSocket en lugar del hardcodeado "1"
+    5. Mostrar indicadores de estado: turno, jaque, ganador
+    6. Agregar menú principal con opciones: crear partida, unirse, ver partidas disponibles
+    7. Agregar pantalla de fin de partida
+    8. Limpiar archivos duplicados
+
+******************************************************************************************************************************************************************
+Contexto del diseño objetivo (Landing Page):
+ 
+    URL: https://benjaminhernandezpesce-cell.github.io/LandingPageAjedrezAlCubo/
+    Nombre del juego: Ajedrez Al Cubo
+    Estilo visual: oscuro, minimalista, elegante — fondo negro, tipografía limpia
+    Idiomas: español e inglés (bilingüe desde el inicio)
+    Piezas: Rey, Torre, Alfil, Caballo, Unicornio (con emoji como identidad)
+ 
+******************************************************************************************************************************************************************
+
