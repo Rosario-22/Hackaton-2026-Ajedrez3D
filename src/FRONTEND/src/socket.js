@@ -1,15 +1,14 @@
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 
-const WS_URL = "https://urethane-onstage-ruckus.ngrok-free.dev/xs/chess";
-const GAME_ID = "1";
+const WS_URL = import.meta.env.VITE_WS_URL;
 
-export const createSocket = (onMessage) => {
+export const createSocket = (gameId, onMessage) => {
   const client = new Client({
     webSocketFactory: () => new SockJS(WS_URL),
     onConnect: () => {
-      console.log("Conectado al Java Backend");
-      client.subscribe(`/topic/game/${GAME_ID}`, (message) => {
+      console.log("Conectado al backend");
+      client.subscribe(`/topic/game/${gameId}`, (message) => {
         try {
           const data = JSON.parse(message.body);
           onMessage({ type: "UPDATE_BOARD", payload: data });

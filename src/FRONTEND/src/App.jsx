@@ -3,12 +3,11 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Text } from "@react-three/drei";
 import { createSocket } from "./socket";
 import "./App.css";
+import Login from "./Login";
 
-const API = "https://urethane-onstage-ruckus.ngrok-free.dev";
-const HEADERS = {
-  "ngrok-skip-browser-warning": "true",
-  "Content-Type": "application/json",
-};
+
+const API = import.meta.env.VITE_API_URL;
+
 
 export default function App() {
   const [pieces, setPieces] = useState([]);
@@ -16,24 +15,37 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
   const socketRef = useRef(null);
+  const [token, setToken] = useState(null);
+  const [username, setUsername] = useState(null);
 
+  const handleLogin = (token, userId, username) => {
+    setToken(token);
+    setUsername(username);
+  };
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
   useEffect(() => {
-    fetch(`${API}/api/games`, { method: "POST", headers: HEADERS })
+    fetch(`${API}/api/games`, { method: "POST", headers })
       .then((res) => res.json())
       .then((data) => {
         setGameId(data.gameId);
         if (data.pieces) setPieces(data.pieces);
       });
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    socketRef.current = createSocket((message) => {
-      if (message.type === "UPDATE_BOARD") {
-        setPieces(message.payload);
-      }
-    });
-    return () => socketRef.current?.close();
-  }, []);
+      if (!gameId) return;
+
+      socketRef.current = createSocket(gameId, (message) => {
+        if (message.type === "UPDATE_BOARD") {
+          setPieces(message.payload.pieces || []);
+        }
+      });
+
+      return () => socketRef.current?.close();
+    }, [gameId]);
 
   const handleSelectPiece = (position) => {
     if (!gameId) return;
@@ -42,7 +54,7 @@ export default function App() {
 
     fetch(
       `${API}/api/games/${gameId}/legal-moves?x=${position.x}&y=${position.y}&z=${position.z}`,
-      { headers: HEADERS },
+      { headers }
     )
       .then((res) => res.json())
       .then((data) => {
@@ -68,7 +80,7 @@ export default function App() {
 
     fetch(`${API}/api/games/${gameId}/moves`, {
       method: "POST",
-      headers: HEADERS,
+      headers,
       body: JSON.stringify(payload),
     }).then(async (res) => {
       try {
@@ -94,6 +106,8 @@ export default function App() {
     setSelected(null);
     setLegalMoves([]);
   };
+
+  if (!token) return <Login onLogin={handleLogin} />;
 
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#0a0a0a" }}>
