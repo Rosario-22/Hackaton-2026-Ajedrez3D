@@ -26,11 +26,13 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/ws/**").permitAll()
-                .requestMatchers("/api/users/*/stats").hasRole("PREMIUM")
-                .requestMatchers("/api/users/*/games").hasRole("PREMIUM")
-                .anyRequest().authenticated()
+            .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+            .requestMatchers("/api/auth/**").permitAll()
+            .requestMatchers("/ws/**").permitAll()
+            .requestMatchers("/xs/**").permitAll()
+            .requestMatchers("/api/users/*/stats").hasRole("PREMIUM")
+            .requestMatchers("/api/users/*/games").hasRole("PREMIUM")
+            .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 

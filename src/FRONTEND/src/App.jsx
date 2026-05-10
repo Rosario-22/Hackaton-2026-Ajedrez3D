@@ -10,6 +10,7 @@ const API = import.meta.env.VITE_API_URL;
 
 
 export default function App() {
+  const [turn, setTurn] = useState("WHITE");
   const [pieces, setPieces] = useState([]);
   const [gameId, setGameId] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -32,6 +33,7 @@ export default function App() {
       .then((data) => {
         setGameId(data.gameId);
         if (data.pieces) setPieces(data.pieces);
+        if (data.turn) setTurn(data.turn);
       });
   }, [token]);
 
@@ -49,6 +51,13 @@ export default function App() {
 
   const handleSelectPiece = (position) => {
     if (!gameId) return;
+    const pieza = pieces.find(p => 
+        p.position.x === position.x && 
+        p.position.y === position.y && 
+        p.position.z === position.z
+    );
+    if (!pieza) return;
+    if (pieza.color.toLowerCase() !== turn.toLowerCase()) return;
 
     setSelected(position);
 
@@ -72,11 +81,7 @@ export default function App() {
     if (!selected || !gameId) return;
 
     const from = clean(selected);
-
-    const payload = {
-      from,
-      to: clean(to),
-    };
+    const payload = { from, to: clean(to) };
 
     fetch(`${API}/api/games/${gameId}/moves`, {
       method: "POST",
@@ -85,7 +90,7 @@ export default function App() {
     }).then(async (res) => {
       try {
         const data = await res.json();
-
+        if (data.turn) setTurn(data.turn);  //actualiza el turno
         if (data.pieces) {
           setPieces(data.pieces);
           return;
